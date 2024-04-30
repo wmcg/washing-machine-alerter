@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "washing-machine-alerter"
+version = "0.1.0"
+description = ""
+authors = ["Will McGregor <william.mcgregor@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+python-kasa = "^0.6.2.1"
+requests = "^2.31.0"
+influxdb-client = "^1.42.0"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^24.4.2"
+ipython = "^8.24.0"
+ipdb = "^0.13.13"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
