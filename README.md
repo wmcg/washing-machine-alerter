@@ -51,3 +51,10 @@ Thoughts:
 
 influx db system service
 https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux_atomic_host/7/html/managing_containers/running_containers_as_systemd_services_with_podman
+
+
+power stage of washing machine
+
+this can be either ON, OFF or  IDLE.
+
+when imaginging this project id thought of complex machine learning aglos to determine if the maching is but decide to just start with the bear minimmum created by eyeballing some readings.

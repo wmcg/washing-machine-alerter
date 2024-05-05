@@ -18,13 +18,14 @@ INFLUX_URL = os.environ.get("INFLUX_URL")
 
 
 def notify(action):
-    if action == "start":
+    if action == "START":
         message = "Washing machine cycle started!"
-    elif action == "end":
+    elif action == "END":
         message = "Washing machine cycle ended!"
     else:
         raise Exception("action must be start or end")
 
+    print(f"{datetime.utcnow()} Notify action: '{action}'")
     r = requests.post(
         "https://api.pushover.net/1/messages.json",
         data={
@@ -54,12 +55,23 @@ def write_influx(power_data):
 
 
 def loop(device_config):
-    # idle {'power': 1.912, 'voltage': 240.948, 'current': 0.038, 'total': 29.799}
-    # off {'power': 0.0, 'voltage': 243.298, 'current': 0.0, 'total': 29.8}
+    current_status = "IDLE"
     while True:
         power_data = asyncio.run(get_power(device_config))
-        print(f"{datetime.utcnow()} - {power_data}")
         write_influx(power_data)
+
+        old_status = current_status
+        current_status = device_power_status(power_data["power"])
+
+        if old_status == "ON" and current_status == "IDLE":
+            notify("END")
+
+        if old_status == "IDLE" and current_status == "ON":
+            notify("START")
+
+        print(
+            f"{datetime.utcnow()} Power: '{power_data['power']}' Current status: '{current_status}' Old status: '{old_status}'"
+        )
         sleep(60)
 
 
@@ -76,11 +88,21 @@ async def get_power(device_config):
     device = await SmartDevice.connect(config=device_config)
     await device.update()
     return {
-        "power": device.emeter_realtime.power,
-        "voltage": device.emeter_realtime.voltage,
-        "current": device.emeter_realtime.current,
-        "total": device.emeter_realtime.total,
+        "power": device.emeter_realtime.power or 0.0,
+        "voltage": device.emeter_realtime.voltage or 0.0,
+        "current": device.emeter_realtime.current or 0.0,
+        "total": device.emeter_realtime.total or 0.0,
     }
+
+
+def device_power_status(power: float):
+    # idle {'power': 1.912, 'voltage': 240.948, 'current': 0.038, 'total': 29.799}
+    # off {'power': 0.0, 'voltage': 243.298, 'current': 0.0, 'total': 29.8}
+    if power < 0.1:
+        return "OFF"
+    if power < 3.0:
+        return "IDLE"
+    return "ON"
 
 
 def main():
