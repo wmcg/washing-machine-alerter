@@ -6,7 +6,7 @@ import os
 from time import sleep
 import influxdb_client
 from influxdb_client.client.write_api import SYNCHRONOUS
-from datetime import datetime
+from datetime import datetime, UTC
 
 KASA_DEVICE_ALIAS = os.environ["KASA_DEVICE_ALIAS"]  # "WashingMachine"
 PUSHOVER_TOKEN = os.environ.get("PUSHOVER_TOKEN")
@@ -25,7 +25,7 @@ def notify(action):
     else:
         raise Exception("action must be start or end")
 
-    print(f"{datetime.utcnow()} Notify action: '{action}'")
+    print(f"{datetime.now(UTC)} Notify action: '{action}'")
     r = requests.post(
         "https://api.pushover.net/1/messages.json",
         data={
@@ -55,6 +55,7 @@ def write_influx(power_data):
 
 
 def loop(device_config):
+    print(f"{datetime.now(UTC)} Starting Loop")
     current_status = "IDLE"
     while True:
         power_data = asyncio.run(get_power(device_config))
@@ -63,14 +64,14 @@ def loop(device_config):
         old_status = current_status
         current_status = device_power_status(power_data["power"])
 
-        if old_status == "ON" and current_status == "IDLE":
+        if old_status == "ON" and current_status != "ON":
             notify("END")
 
-        if old_status == "IDLE" and current_status == "ON":
+        if old_status != "ON" and current_status == "ON":
             notify("START")
 
         print(
-            f"{datetime.utcnow()} Power: '{power_data['power']}' Current status: '{current_status}' Old status: '{old_status}'"
+            f"{datetime.now(UTC)} Power: '{power_data['power']}' Current status: '{current_status}' Old status: '{old_status}'"
         )
         sleep(60)
 
