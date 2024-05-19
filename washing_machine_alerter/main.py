@@ -6,7 +6,7 @@ import os
 from time import sleep
 import influxdb_client
 from influxdb_client.client.write_api import SYNCHRONOUS
-from datetime import datetime
+from datetime import datetime, UTC
 
 KASA_DEVICE_ALIAS = os.environ["KASA_DEVICE_ALIAS"]  # "WashingMachine"
 PUSHOVER_TOKEN = os.environ.get("PUSHOVER_TOKEN")
@@ -25,7 +25,7 @@ def notify(action):
     else:
         raise Exception("action must be start or end")
 
-    print(f"{datetime.utcnow()} Notify action: '{action}'")
+    print(f"{datetime.now(UTC)} Notify action: '{action}'")
     r = requests.post(
         "https://api.pushover.net/1/messages.json",
         data={
@@ -54,34 +54,22 @@ def write_influx(power_data):
     write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=pd)
 
 
-def loop(device_config):
-    current_status = "IDLE"
-    while True:
-        power_data = asyncio.run(get_power(device_config))
-        write_influx(power_data)
-
-        old_status = current_status
-        current_status = device_power_status(power_data["power"])
-
-        if old_status == "ON" and current_status == "IDLE":
-            notify("END")
-
-        if old_status == "IDLE" and current_status == "ON":
-            notify("START")
-
-        print(
-            f"{datetime.utcnow()} Power: '{power_data['power']}' Current status: '{current_status}' Old status: '{old_status}'"
-        )
-        sleep(60)
+def device_power_status(power: float):
+    # idle {'power': 1.912, 'voltage': 240.948, 'current': 0.038, 'total': 29.799}
+    # off {'power': 0.0, 'voltage': 243.298, 'current': 0.0, 'total': 29.8}
+    if power < 0.1:
+        return "OFF"
+    if power < 3.0:
+        return "IDLE"
+    return "ON"
 
 
-async def get_device_config():
-    devices = await Discover.discover(discovery_timeout=5)
-    for ip, device in devices.items():
-        await device.update()
-        if device.alias == KASA_DEVICE_ALIAS:
-            return device.config
-    raise Exception(f"Device with alias {KASA_DEVICE_ALIAS} was not found")
+def alert_on_state_change(new_state, old_state):
+    if old_state == "ON" and new_state != "ON":
+        notify("END")
+
+    if old_state != "ON" and new_state == "ON":
+        notify("START")
 
 
 async def get_power(device_config):
@@ -95,19 +83,32 @@ async def get_power(device_config):
     }
 
 
-def device_power_status(power: float):
-    # idle {'power': 1.912, 'voltage': 240.948, 'current': 0.038, 'total': 29.799}
-    # off {'power': 0.0, 'voltage': 243.298, 'current': 0.0, 'total': 29.8}
-    if power < 0.1:
-        return "OFF"
-    if power < 3.0:
-        return "IDLE"
-    return "ON"
+async def get_device_config():
+    devices = await Discover.discover(discovery_timeout=5)
+    for _, device in devices.items():
+        await device.update()
+        if device.alias == KASA_DEVICE_ALIAS:
+            return device.config
+    raise Exception(f"Device with alias {KASA_DEVICE_ALIAS} was not found")
 
 
 def main():
     device_config = asyncio.run(get_device_config())
-    loop(device_config)
+    print(f"{datetime.now(UTC)} Starting Loop")
+    new_state = "IDLE"
+    while True:
+        power_data = asyncio.run(get_power(device_config))
+
+        write_influx(power_data)
+
+        old_state = new_state
+        new_state = device_power_status(power_data["power"])
+        alert_on_state_change(new_state, old_state)
+
+        print(
+            f"{datetime.now(UTC)} Power: '{power_data['power']}' Current status: '{new_state}' Old status: '{old_state}'"
+        )
+        sleep(60)
 
 
 if __name__ == "__main__":
